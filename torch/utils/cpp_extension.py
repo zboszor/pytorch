@@ -246,7 +246,7 @@ def _is_binary_build() -> bool:
 
 def _accepted_compilers_for_platform() -> List[str]:
     # gnu-c++ and gnu-cc are the conda gcc compilers
-    return ['clang++', 'clang'] if IS_MACOS else ['g++', 'gcc', 'gnu-c++', 'gnu-cc']
+    return ['clang++', 'clang'] if IS_MACOS else ['g++', 'gcc', 'gnu-c++', 'gnu-cc', 'clang++', 'clang']
 
 
 def get_default_build_root() -> str:
@@ -277,14 +277,16 @@ def check_compiler_ok_for_platform(compiler: str) -> bool:
     '''
     if IS_WINDOWS:
         return True
-    which = subprocess.check_output(['which', compiler], stderr=subprocess.STDOUT)
+    compilercmd = compiler.split()
+    which = subprocess.check_output(['which', compilercmd[0]], stderr=subprocess.STDOUT)
     # Use os.path.realpath to resolve any symlinks, in particular from 'c++' to e.g. 'g++'.
     compiler_path = os.path.realpath(which.decode(*SUBPROCESS_DECODE_ARGS).strip())
     # Check the compiler name
     if any(name in compiler_path for name in _accepted_compilers_for_platform()):
         return True
     # If compiler wrapper is used try to infer the actual compiler by invoking it with -v flag
-    version_string = subprocess.check_output([compiler, '-v'], stderr=subprocess.STDOUT).decode(*SUBPROCESS_DECODE_ARGS)
+    compilercmd.append('-v')
+    version_string = subprocess.check_output(compilercmd, stderr=subprocess.STDOUT).decode(*SUBPROCESS_DECODE_ARGS)
     if IS_LINUX:
         # Check for 'gcc' or 'g++' for sccache warpper
         pattern = re.compile("^COLLECT_GCC=(.*)$", re.MULTILINE)
@@ -332,13 +334,15 @@ def get_compiler_abi_compatibility_and_version(compiler) -> Tuple[bool, TorchVer
         # There is no particular minimum version we need for clang, so we're good here.
         return (True, TorchVersion('0.0.0'))
     try:
+        compilercmd = compiler.split()
+        which = subprocess.check_output(['which', compilercmd[0]], stderr=subprocess.STDOUT)
         if IS_LINUX:
             minimum_required_version = MINIMUM_GCC_VERSION
-            versionstr = subprocess.check_output([compiler, '-dumpfullversion', '-dumpversion'])
+            versionstr = subprocess.check_output([which, '-dumpfullversion', '-dumpversion'])
             version = versionstr.decode(*SUBPROCESS_DECODE_ARGS).strip().split('.')
         else:
             minimum_required_version = MINIMUM_MSVC_VERSION
-            compiler_info = subprocess.check_output(compiler, stderr=subprocess.STDOUT)
+            compiler_info = subprocess.check_output(which, stderr=subprocess.STDOUT)
             match = re.search(r'(\d+)\.(\d+)\.(\d+)', compiler_info.decode(*SUBPROCESS_DECODE_ARGS).strip())
             version = ['0', '0', '0'] if match is None else list(match.groups())
     except Exception:
